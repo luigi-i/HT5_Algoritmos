@@ -4,13 +4,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Configuración inicial
-RANDOM_SEED = 42
-RAM_CAPACITY = 100
-CPU_INSTRUCTIONS_PER_TICK = 3
-INTERVAL = 10  # Intervalo de llegada de procesos (distribución exponencial)
-process_counts = [25, 50, 100, 150, 200]
+semilla = 524
+RAM = 200
+ticks = 6
+capacidad = 10 # Intervalo de llegada de procesos (distribución exponencial)
+nProcesos = [25, 50, 100, 150, 200]
 
-random.seed(RANDOM_SEED)
+random.seed(semilla)
 
 avg_times = []
 std_times = []
@@ -21,65 +21,69 @@ class Process:
         self.name = name
         self.ram = ram
         self.cpu = cpu
-        self.memory_needed = random.randint(1, 10)  # Memoria requerida (1-10)
-        self.instructions = random.randint(1, 10)    # Instrucciones totales (1-10)
+        self.memoriaRequerida = random.randint(1, 10)  # Memoria requerida aleatoria
+        self.instructions = random.randint(1, 10)    # Instrucciones totales aleatorias
         self.start_time = env.now
         self.action = env.process(self.run())
 
     def run(self):
-        # Estado NEW: Solicitar memoria RAM
-        yield self.ram.get(self.memory_needed)
+        # NEW
+        yield self.ram.get(self.memoriaRequerida)
         
-        # Estado READY y RUNNING
+        # ready y running
         while self.instructions > 0:
             with self.cpu.request() as req:
                 yield req
-                # Estado RUNNING: Ejecutar 3 instrucciones por unidad de tiempo
+                # Running
                 yield self.env.timeout(1)
-                self.instructions = max(0, self.instructions - CPU_INSTRUCTIONS_PER_TICK)
+                self.instructions = max(0, self.instructions - ticks)
                 
                 if self.instructions > 0:
-                    # Decidir próximo estado después de RUNNING (probabilidad 1/21 para WAITING, 20/21 para READY)
-                    next_state = random.randint(1, 21)  # Generar número entre 1 y 21
-                    if next_state == 1:  # WAITING (1/21 probabilidad, I/O)
+                    # Decidir próximo estado 
+                    next_state = random.randint(1, 2)  # Generar número entre 1 y 2
+                    if next_state == 1:  # waiting 1/2 (I/O)
                         yield self.env.timeout(1)  # Simular tiempo de I/O
-                    # Si no es 1 (20/21 probabilidad), vuelve implícitamente a READY (espera por CPU)
 
-        # Estado TERMINATED: Liberar memoria
+        # Terminated, borra la memoria del proceso
         total_time = self.env.now - self.start_time
-        yield self.ram.put(self.memory_needed)
-        process_times.append(total_time)
+        yield self.ram.put(self.memoriaRequerida)
+        tDeProcesado.append(total_time)
 
 def process_generator(env, num_processes, ram, cpu):
     for i in range(num_processes):
         Process(env, f"Process {i}", ram, cpu)
-        yield env.timeout(random.expovariate(1.0 / INTERVAL))
+        yield env.timeout(random.expovariate(1.0 / capacidad))
+
 
 # Ejecutar simulación para cada cantidad de procesos
-for num_processes in process_counts:
-    process_times = []
+for num_procesos in nProcesos:
+    tDeProcesado = []
     env = simpy.Environment()
-    ram = simpy.Container(env, init=RAM_CAPACITY, capacity=RAM_CAPACITY)
+    ram = simpy.Container(env, init=RAM, capacity=RAM)
     cpu = simpy.Resource(env, capacity=1)
     
-    env.process(process_generator(env, num_processes, ram, cpu))
+    env.process(process_generator(env, num_procesos, ram, cpu))
     env.run()
     
-    avg_time = np.mean(process_times)
-    std_time = np.std(process_times)
+    avg_time = np.sum(tDeProcesado) / 100  # Ambos divididos por 100 para que
+    std_time = np.std(tDeProcesado) / 100  # Se lea mejor
     avg_times.append(avg_time)
     std_times.append(std_time)
     
-    print(f"\nResults for {num_processes} processes:")
-    print(f"Average time: {avg_time:.2f}")
-    print(f"Standard deviation: {std_time:.2f}")
+    #resultados
+    print(f"\nResultados para: {num_procesos} processes:")
+    print(f"Tiempo promedio: {avg_time:.2f}")
+    print(f"Desviacion estandar: {std_time:.2f}")
+    print(f"RAM disponible: {RAM}")
+    print(f"Procesos por ciclo: {ticks}")
 
-# Generar la gráfica
+# gráfica
 plt.figure(figsize=(10, 6))
-plt.errorbar(process_counts, avg_times, yerr=std_times, fmt='o-', capsize=5, label='Average Time', color='blue')
-plt.xlabel('Number of Processes')
-plt.ylabel('Average Time in System (units)')
-plt.title('Average Process Time vs Number of Processes')
+plt.errorbar(nProcesos, avg_times, yerr=std_times, fmt='o-', capsize=5, label='Average Time', color='blue')
+plt.xlabel('Numero de Procesos')
+plt.ylabel('Tiempo requerido en unidades del sistema / 100')
+plt.suptitle("Tiempo promedio / Numero de procesos")
+plt.title("Intervalo de procesos: 10, RAM = 100, Procesos por ciclo = 6")
 plt.grid(True)
 plt.legend()
 plt.savefig('process_time_vs_number.png')
